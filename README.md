@@ -37,3 +37,14 @@ pip install -r requirements.txt
 streamlit run app.py
 
 ```
+
+
+
+## Additional Information:
+## Why Streamlit?
+
+OpenPath uses Streamlit because:
+- It lets us build web apps in pure Python, which is ideal for rapid hackathon prototyping.
+- It has built-in widgets and layout primitives for multi-step forms and chat-like interfaces.
+- It deploys easily (Streamlit Community Cloud / Railway) so judges can try the app quickly.
+
