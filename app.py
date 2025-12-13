@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 
+from llm import init_model, stream_chat_completion
+
 # ---------- Constants ----------
 NATIONALITIES = ["Nigeria", "India"]
 CURRENT_LOCATIONS = ["Nigeria", "India", "UK"]
@@ -11,6 +13,7 @@ LOW_BUDGET_THRESHOLD = 15000  # rough, not legal or financial advice
 
 # ---------- Page configuration ----------
 st.set_page_config(page_title="OpenPath Mobility Copilot", page_icon="🌍")
+init_model(default_model="gpt-5-nano")  # Initialize model in session_state
 
 st.title("OpenPath – Mobility Copilot")
 st.write(
@@ -441,7 +444,17 @@ with tab_wizard:
 
         st.subheader("Roadmap overview")
         st.write(f"Your roadmap has **{len(rows)}** main phase(s).")
-        st.dataframe(df, use_container_width=True)
+
+        # Table + interactive dataframe (Lecture 9 style)
+        st.table(df)  # static
+        st.dataframe(df, use_container_width=True)  # interactive
+
+        # Simple metric + chart (Lecture 9 pattern)
+        status_counts = df["Status / Visa"].value_counts().reset_index()
+        status_counts.columns = ["Status / Visa", "Count"]
+
+        st.metric("Number of phases", len(rows))
+        st.bar_chart(status_counts.set_index("Status / Visa"))
 
         # Budget-based gentle warning (not advice)
         if budget > 0 and budget < LOW_BUDGET_THRESHOLD:
@@ -477,17 +490,124 @@ with tab_wizard:
             f"**Timeline:** {latest['timeline_years']} year(s)"
         )
 
-# ====================== DOC EXPLAINER TAB (to be wired with OpenAI) ======================
+# ====================== DOC EXPLAINER TAB ======================
 with tab_doc:
-    st.subheader("Doc explainer")
-    st.info(
-        "Paste visa or university emails/requirements here (feature to be wired to AI)."
+    st.subheader("Doc explainer – make confusing emails simple")
+
+    st.caption(
+        "Paste visa or university emails/requirements below. "
+        "OpenPath will rewrite them in plain English with a checklist. "
+        "This is guidance only, not legal or immigration advice."
     )
 
-# ====================== COLLAB HELPER TAB (future) ======================
+    # Use a dedicated history for this tab
+    if "doc_messages" not in st.session_state:
+        st.session_state.doc_messages = []
+
+    # Show old messages
+    for message in st.session_state.doc_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Chat input for doc explainer
+    if prompt := st.chat_input(
+        "Paste an email/requirement or ask a visa question...",
+        key="doc_chat_input",
+    ):
+        # 1) Add user message
+        st.session_state.doc_messages.append(
+            {"role": "user", "content": prompt}
+        )
+
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # 2) Build messages list (system + history)
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You explain visa and university emails for international "
+                    "students in very simple English. You are NOT a lawyer and "
+                    "do NOT give legal or immigration advice. You summarise, "
+                    "highlight mandatory steps, and suggest practical next steps. "
+                    "If something depends on current law, tell them to check the "
+                    "official government/university website."
+                ),
+            },
+            *st.session_state.doc_messages,
+        ]
+
+        # 3) Stream the reply using the helper (this is your pattern)
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+
+            for response in stream_chat_completion(messages):
+                full_response += (response.choices[0].delta.content or "")
+                message_placeholder.markdown(full_response + "▌")
+
+            message_placeholder.markdown(full_response)
+
+        # 4) Save assistant reply
+        st.session_state.doc_messages.append(
+            {"role": "assistant", "content": full_response}
+        )
+
+
+# ====================== COLLAB HELPER TAB ======================
 with tab_collab:
-    st.subheader("Collab helper")
-    st.info(
-        "This tab will help you schedule across time zones and draft emails/messages "
-        "for universities, agents, or employers (future version)."
+    st.subheader("Collab helper – emails & cross-time-zone planning")
+
+    st.caption(
+        "Describe who you want to contact (university, employer, agent), "
+        "what you want (meeting, clarification, etc.), and any time zones. "
+        "OpenPath will draft a polite email/message and suggest a few time slots."
     )
+
+    if "collab_messages" not in st.session_state:
+        st.session_state.collab_messages = []
+
+    for message in st.session_state.collab_messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input(
+        "Who are you contacting and what do you want to say?",
+        key="collab_chat_input",
+    ):
+        st.session_state.collab_messages.append(
+            {"role": "user", "content": prompt}
+        )
+
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You help international students write short, polite emails "
+                    "to universities, employers, or agents. If they mention "
+                    "a meeting or call, suggest 2–3 specific time slots and "
+                    "explicitly mention time zones. Keep the email clean and "
+                    "easy to copy-paste."
+                ),
+            },
+            *st.session_state.collab_messages,
+        ]
+
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
+
+            for response in stream_chat_completion(messages):
+                full_response += (response.choices[0].delta.content or "")
+                message_placeholder.markdown(full_response + "▌")
+
+            message_placeholder.markdown(full_response)
+
+        st.session_state.collab_messages.append(
+            {"role": "assistant", "content": full_response}
+        )
+# End of app.py
