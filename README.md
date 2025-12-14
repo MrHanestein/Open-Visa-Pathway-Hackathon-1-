@@ -29,15 +29,17 @@ OpenPath is an AI mobility copilot that turns this distressing process into a cl
 - [ ] Basic roadmap flow
 - [ ] Doc explainer
 - [ ] Collab helper
+## Setup (Local)
+``` bash
+1) pip install -r requirements.txt
+2) Create .streamlit/secrets.toml:
+   OPENAI_API_KEY="your_key"
+3) streamlit run app.py
 
-## 5. How to run (will be updated)
-
-```bash
-pip install -r requirements.txt
-streamlit run app.py
+## Theme
+UI theme is configured in .streamlit/config.toml.
 
 ```
-
 
 
 ## Additional Information:
@@ -48,3 +50,6 @@ OpenPath uses Streamlit because:
 - It has built-in widgets and layout primitives for multi-step forms and chat-like interfaces.
 - It deploys easily (Streamlit Community Cloud / Railway) so judges can try the app quickly.
 
+## Disclosure
+
+The full code base was built during the hackathon with 10 days left on the clock.
