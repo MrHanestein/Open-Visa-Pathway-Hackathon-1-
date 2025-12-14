@@ -1,7 +1,11 @@
 import streamlit as st
 import pandas as pd
 
-from llm import init_model, stream_chat_completion
+from llm import init_model, stream_chat_completion, retrieve_top_k
+import json
+from dataclasses import dataclass
+from typing import List, Tuple
+
 
 # ---------- Constants ----------
 NATIONALITIES = ["Nigeria", "India"]
@@ -489,6 +493,54 @@ with tab_wizard:
             f"**Budget:** ~£{latest['budget']:,}  |  "
             f"**Timeline:** {latest['timeline_years']} year(s)"
         )
+def _strip_code_fences(s: str) -> str:
+    s = (s or "").strip()
+    if s.startswith("```"):
+        s = s.split("\n", 1)[-1]
+        if s.endswith("```"):
+            s = s.rsplit("```", 1)[0]
+    return s.strip()
+
+
+def _try_parse_json(s: str):
+    try:
+        return json.loads(_strip_code_fences(s)), None
+    except Exception as e:
+        return None, str(e)
+
+
+def _render_doc_json(payload: dict):
+    summary = payload.get("summary_bullets", [])
+    checklist = payload.get("checklist", [])
+    unknowns = payload.get("unknowns", [])
+    links = payload.get("links_to_verify", [])
+    sources_used = payload.get("sources_used", [])
+
+    if summary:
+        st.markdown("**Plain-English summary**")
+        for b in summary:
+            st.markdown(f"- {b}")
+
+    if checklist:
+        st.markdown("**Checklist**")
+        for c in checklist:
+            st.markdown(f"- [ ] {c}")
+
+    if unknowns:
+        st.markdown("**UNKNOWN (verify these)**")
+        for u in unknowns:
+            st.markdown(f"- {u}")
+
+    if links:
+        st.markdown("**Links to verify**")
+        for ln in links:
+            st.markdown(f"- {ln}")
+
+    if sources_used:
+        st.markdown("**Sources used (from KB retrieval)**")
+        for su in sources_used:
+            st.markdown(f"- {su}")
+
 
 # ====================== DOC EXPLAINER TAB ======================
 with tab_doc:
@@ -500,59 +552,92 @@ with tab_doc:
         "This is guidance only, not legal or immigration advice."
     )
 
-    # Use a dedicated history for this tab
     if "doc_messages" not in st.session_state:
         st.session_state.doc_messages = []
 
-    # Show old messages
+    # Render history (pretty render assistant JSON when possible)
     for message in st.session_state.doc_messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            if message["role"] == "assistant":
+                parsed, _err = _try_parse_json(message["content"])
+                if parsed:
+                    _render_doc_json(parsed)
+                    with st.expander("Raw JSON"):
+                        st.json(parsed)
+                else:
+                    st.markdown(message["content"])
+            else:
+                st.markdown(message["content"])
 
-    # Chat input for doc explainer
     if prompt := st.chat_input(
         "Paste an email/requirement or ask a visa question...",
         key="doc_chat_input",
     ):
-        # 1) Add user message
-        st.session_state.doc_messages.append(
-            {"role": "user", "content": prompt}
-        )
+        # 1) Save user message
+        st.session_state.doc_messages.append({"role": "user", "content": prompt})
 
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # 2) Build messages list (system + history)
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You explain visa and university emails for international "
-                    "students in very simple English. You are NOT a lawyer and "
-                    "do NOT give legal or immigration advice. You summarise, "
-                    "highlight mandatory steps, and suggest practical next steps. "
-                    "If something depends on current law, tell them to check the "
-                    "official government/university website."
-                ),
-            },
-            *st.session_state.doc_messages,
-        ]
+        # 2) RAG retrieval
+        snips = retrieve_top_k(prompt, k=3)
 
-        # 3) Stream the reply using the helper (this is your pattern)
+        if snips:
+            sources_block = "SOURCES (use only if relevant; if detail missing, say UNKNOWN):\n"
+            for i, s in enumerate(snips, start=1):
+                sources_block += (
+                    f"[{i}] {s.title} | file={s.kb_file} | url={s.source_url}\n"
+                    f"{s.text}\n\n"
+                )
+        else:
+            sources_block = "SOURCES: (none)\n"
+
+        # 3) Build messages
+        system_msg = {
+            "role": "system",
+            "content": (
+                "You explain immigration/university emails in very simple English.\n"
+                "You are NOT a lawyer. This is NOT legal/immigration advice.\n\n"
+                "RULES:\n"
+                "- Use SOURCES if relevant.\n"
+                "- If a detail is NOT in SOURCES, write UNKNOWN and tell the user what to verify.\n"
+                "- Do NOT invent fees, dates, eligibility rules.\n"
+                "- Output MUST be valid JSON ONLY (no markdown, no code fences) with keys:\n"
+                "  summary_bullets, checklist, unknowns, links_to_verify, sources_used\n\n"
+                f"{sources_block}"
+            ),
+        }
+        messages = [system_msg] + st.session_state.doc_messages
+
+        # 4) Stream assistant reply
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             full_response = ""
 
-            for response in stream_chat_completion(messages):
-                full_response += (response.choices[0].delta.content or "")
-                message_placeholder.markdown(full_response + "▌")
+            for chunk in stream_chat_completion(messages):
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    full_response += delta
+                    message_placeholder.markdown(full_response + "▌")
 
             message_placeholder.markdown(full_response)
 
-        # 4) Save assistant reply
-        st.session_state.doc_messages.append(
-            {"role": "assistant", "content": full_response}
-        )
+            # 5) Parse + render
+            parsed, err = _try_parse_json(full_response)
+            if parsed:
+                st.markdown("---")
+                _render_doc_json(parsed)
+                with st.expander("Raw JSON"):
+                    st.json(parsed)
+            else:
+                st.warning(
+                    "Model output was not valid JSON. Showing raw output instead.\n\n"
+                    f"Parse error: {err}"
+                )
+                st.code(full_response)
+
+        # 6) Save assistant message
+        st.session_state.doc_messages.append({"role": "assistant", "content": full_response})
 
 
 # ====================== COLLAB HELPER TAB ======================
@@ -576,9 +661,7 @@ with tab_collab:
         "Who are you contacting and what do you want to say?",
         key="collab_chat_input",
     ):
-        st.session_state.collab_messages.append(
-            {"role": "user", "content": prompt}
-        )
+        st.session_state.collab_messages.append({"role": "user", "content": prompt})
 
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -587,11 +670,11 @@ with tab_collab:
             {
                 "role": "system",
                 "content": (
-                    "You help international students write short, polite emails "
-                    "to universities, employers, or agents. If they mention "
-                    "a meeting or call, suggest 2–3 specific time slots and "
-                    "explicitly mention time zones. Keep the email clean and "
-                    "easy to copy-paste."
+                    "You help international students write short, polite emails/messages "
+                    "to universities, employers, or agents.\n"
+                    "If they mention a meeting/call, suggest 2–3 specific time slots and "
+                    "explicitly mention time zones.\n"
+                    "Keep the message clean, professional, and easy to copy-paste."
                 ),
             },
             *st.session_state.collab_messages,
@@ -601,13 +684,12 @@ with tab_collab:
             message_placeholder = st.empty()
             full_response = ""
 
-            for response in stream_chat_completion(messages):
-                full_response += (response.choices[0].delta.content or "")
-                message_placeholder.markdown(full_response + "▌")
+            for chunk in stream_chat_completion(messages):
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    full_response += delta
+                    message_placeholder.markdown(full_response + "▌")
 
             message_placeholder.markdown(full_response)
 
-        st.session_state.collab_messages.append(
-            {"role": "assistant", "content": full_response}
-        )
-# End of app.py
+        st.session_state.collab_messages.append({"role": "assistant", "content": full_response})
