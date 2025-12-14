@@ -7,8 +7,8 @@ import numpy as np
 import streamlit as st
 from openai import OpenAI
 
-# Embeddings model (OpenAI docs show text-embedding-3-small usage) :contentReference[oaicite:2]{index=2}
-EMBED_MODEL = "text-embedding-3-small"
+# Embeddings model
+EMBED_MODEL = "text-embedding-3-small"  # default embedding length is 1536 :contentReference[oaicite:1]{index=1}
 
 
 def _get_api_key() -> str:
@@ -23,7 +23,7 @@ def _get_api_key() -> str:
 
 @st.cache_resource
 def _get_client() -> OpenAI:
-    # Cache the OpenAI client as a shared resource :contentReference[oaicite:3]{index=3}
+    # Cache the OpenAI client as a shared resource :contentReference[oaicite:2]{index=2}
     return OpenAI(api_key=_get_api_key())
 
 
@@ -34,7 +34,7 @@ def init_model(default_model: str = "gpt-5-nano") -> None:
 
 def stream_chat_completion(messages: list[dict]):
     """
-    Streaming Chat Completions. :contentReference[oaicite:4]{index=4}
+    Streaming Chat Completions.
     """
     client = _get_client()
     return client.chat.completions.create(
@@ -111,13 +111,22 @@ def _chunk_text(text: str, max_chars: int = 900) -> List[str]:
     return chunks
 
 
+# ✅ Upgrade B: safer embedding call (won't hard-crash your demo)
 def embed_texts(texts: List[str]) -> List[List[float]]:
     """
-    Embeddings API: pass a string or list of strings. :contentReference[oaicite:5]{index=5}
+    Embeddings API: pass a string or list of strings.
+
+    If embeddings fail (bad key, rate limit, model issue), we:
+    - show a Streamlit error (visible in UI)
+    - return [] so callers can safely bail out without crashing
     """
     client = _get_client()
-    resp = client.embeddings.create(model=EMBED_MODEL, input=texts)
-    return [d.embedding for d in resp.data]
+    try:
+        resp = client.embeddings.create(model=EMBED_MODEL, input=texts)
+        return [d.embedding for d in resp.data]
+    except Exception as e:
+        st.error(f"Embedding error (RAG disabled for this request): {e}")
+        return []
 
 
 def _kb_fingerprint(kb_dir: str) -> Tuple[Tuple[str, float], ...]:
@@ -129,9 +138,14 @@ def _kb_fingerprint(kb_dir: str) -> Tuple[Tuple[str, float], ...]:
 
 
 @st.cache_data(show_spinner="Indexing knowledge base…")
-def _build_kb_index_cached(kb_dir: str, fingerprint: Tuple[Tuple[str, float], ...]) -> List[KBChunk]:
+def _build_kb_index_cached(
+    kb_dir: str,
+    fingerprint: Tuple[Tuple[str, float], ...],
+) -> List[KBChunk]:
     """
-    Build KB index (cached). fingerprint param forces recompute when files change. :contentReference[oaicite:6]{index=6}
+    Build KB index (cached). fingerprint param forces recompute when files change.
+
+    Uses st.cache_data because we are caching "data" (a list of pickleable dataclasses). :contentReference[oaicite:3]{index=3}
     """
     md_files = sorted(glob.glob(os.path.join(kb_dir, "*.md")))
     if not md_files:
@@ -150,6 +164,11 @@ def _build_kb_index_cached(kb_dir: str, fingerprint: Tuple[Tuple[str, float], ..
             texts.append(ch)
 
     embs = embed_texts(texts)
+
+    # If embeddings failed, don't crash: return empty index for this run
+    if not embs or len(embs) != len(texts):
+        st.warning("Knowledge base indexing skipped (embedding failure).")
+        return []
 
     kb_index: List[KBChunk] = []
     for (kb_file, title, url, ch), emb in zip(meta, embs):
@@ -171,6 +190,18 @@ def build_kb_index(kb_dir: str = "kb") -> List[KBChunk]:
     return _build_kb_index_cached(kb_dir, fp)
 
 
+def _cosine_sims(query_emb: List[float], kb_index: List[KBChunk]) -> List[float]:
+    q = np.array(query_emb, dtype=np.float32)
+    q_norm = np.linalg.norm(q) + 1e-8
+
+    sims: List[float] = []
+    for item in kb_index:
+        v = np.array(item.embedding, dtype=np.float32)
+        sim = float(np.dot(q, v) / (q_norm * (np.linalg.norm(v) + 1e-8)))
+        sims.append(sim)
+    return sims
+
+
 def retrieve_top_k(query: str, k: int = 3, kb_dir: str = "kb") -> List[KBChunk]:
     """
     Cosine similarity over embeddings; returns top-k chunks.
@@ -179,15 +210,36 @@ def retrieve_top_k(query: str, k: int = 3, kb_dir: str = "kb") -> List[KBChunk]:
     if not kb_index:
         return []
 
-    q_emb = embed_texts([query])[0]
-    q = np.array(q_emb, dtype=np.float32)
-    q_norm = np.linalg.norm(q) + 1e-8
+    q_embs = embed_texts([query])
+    if not q_embs:
+        return []
+    q_emb = q_embs[0]
 
-    sims = []
-    for item in kb_index:
-        v = np.array(item.embedding, dtype=np.float32)
-        sim = float(np.dot(q, v) / (q_norm * (np.linalg.norm(v) + 1e-8)))
-        sims.append(sim)
-
+    sims = _cosine_sims(q_emb, kb_index)
     top_idx = np.argsort(sims)[::-1][:k]
     return [kb_index[i] for i in top_idx]
+
+
+# ✅ Upgrade A: return (chunk, similarity_score) for judge-friendly transparency
+def retrieve_top_k_with_scores(
+    query: str,
+    k: int = 3,
+    kb_dir: str = "kb",
+) -> List[Tuple[KBChunk, float]]:
+    """
+    Same as retrieve_top_k, but returns (KBChunk, similarity_score).
+
+    Score is cosine similarity in [-1, 1], usually ~0.2–0.9 for "related" text in practice.
+    """
+    kb_index = build_kb_index(kb_dir=kb_dir)
+    if not kb_index:
+        return []
+
+    q_embs = embed_texts([query])
+    if not q_embs:
+        return []
+    q_emb = q_embs[0]
+
+    sims = _cosine_sims(q_emb, kb_index)
+    top_idx = np.argsort(sims)[::-1][:k]
+    return [(kb_index[i], float(sims[i])) for i in top_idx]
