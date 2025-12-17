@@ -31,11 +31,17 @@ OpenPath is an AI mobility copilot that turns this distressing process into a cl
 - [ ] Collab helper
 ## Setup (Local)
 ``` bash
-1) pip install -r requirements.txt
-2) Create .streamlit/secrets.toml:
+1) git clone https://github.com/MrHanestein/Open-Visa-Pathway-Hackathon-1-.git
+ cd https://github.com/MrHanestein/Open-Visa-Pathway-Hackathon-1-.git - Your local directory.
+2) pip install -r requirements.txt
+3) Create .streamlit/secrets.toml:
    OPENAI_API_KEY="your_key"
-3) streamlit run app.py
+4) Create and activate virtual environment (Windows users): python -m venv .venv
+..venv\Scripts\Activate.ps1. (MacBook users):python3 -m venv .venv
+source .venv/bin/activate.
+5) streamlit run app.py
 
+Note: using .\.venv\Scripts\Activate.ps1 ensures you switch from your global Python dependencies to the isolated ones in this project.
 ## Theme
 UI theme is configured in .streamlit/config.toml.
 
