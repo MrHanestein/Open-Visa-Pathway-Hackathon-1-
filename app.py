@@ -452,12 +452,20 @@ def build_roadmap(profile: dict) -> list[dict]:
 
     return rows
 
+NAV_OPTIONS = ["🏁 Demo mode", "🧙 Wizard → Roadmap", "📄 Doc explainer", "🤝 Collab helper", "🧩 Show all tabs"]
+
+if "nav" not in st.session_state:
+    st.session_state.nav = NAV_OPTIONS[0]
+
+# Apply programmatic nav requests BEFORE widget instantiation
+if "nav_request" in st.session_state:
+    st.session_state.nav = st.session_state.pop("nav_request")
 
 # ---------- Sidebar navigation (your choice) ----------
 st.sidebar.title("🧭 OpenPath Navigation")
 nav = st.sidebar.radio(
     "Go to",
-    ["🏁 Demo mode", "🧙 Wizard → Roadmap", "📄 Doc explainer", "🤝 Collab helper", "🧩 Show all tabs"],
+    NAV_OPTIONS,
     key="nav",
 )
 with st.sidebar.expander("👤 Persona card"):
@@ -500,8 +508,8 @@ if nav == "🏁 Demo mode":
 
     colA, colB = st.columns([1, 2])
     with colA:
-        if st.button("🚀 Start Wizard", use_container_width=True):
-            st.session_state["nav"] = "🧙 Wizard → Roadmap"
+        if st.button("🚀 Start Wizard", width="stretch"):
+            st.session_state["nav_request"] = "🧙 Wizard → Roadmap"
             st.rerun()
     with colB:
         st.info("Tip for judging: after Wizard, paste an email in Doc explainer to show RAG sources.")

@@ -1,31 +1,72 @@
 import os
 import glob
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import numpy as np
 import streamlit as st
 from openai import OpenAI
+from streamlit.errors import StreamlitSecretNotFoundError
 
 # Embeddings model
-EMBED_MODEL = "text-embedding-3-small"  # default embedding length is 1536 :contentReference[oaicite:1]{index=1}
+EMBED_MODEL = "text-embedding-3-small"
 
 
-def _get_api_key() -> str:
-    # Streamlit best practice: use st.secrets or env var
-    if "OPENAI_API_KEY" in st.secrets:
-        return st.secrets["OPENAI_API_KEY"]
-    k = os.environ.get("OPENAI_API_KEY")
-    if not k:
-        raise RuntimeError("Missing OPENAI_API_KEY (set Streamlit secret or env var).")
-    return k
+# ---------------------------
+# Secrets / client helpers
+# ---------------------------
+
+def _get_api_key() -> Optional[str]:
+    """
+    Return API key if available, otherwise None.
+    Order:
+      1) environment variable OPENAI_API_KEY
+      2) Streamlit secrets OPENAI_API_KEY
+    """
+    k = os.getenv("OPENAI_API_KEY")
+    if k:
+        return k
+
+    # Accessing st.secrets can raise if secrets.toml doesn't exist
+    try:
+        return st.secrets.get("OPENAI_API_KEY")
+    except StreamlitSecretNotFoundError:
+        return None
 
 
 @st.cache_resource
-def _get_client() -> OpenAI:
-    # Cache the OpenAI client as a shared resource :contentReference[oaicite:2]{index=2}
-    return OpenAI(api_key=_get_api_key())
+def _client_for_key(api_key: str) -> OpenAI:
+    # Cache the OpenAI client as a shared resource
+    return OpenAI(api_key=api_key)
 
+
+def _get_client() -> Optional[OpenAI]:
+    key = _get_api_key()
+    if not key:
+        return None
+    return _client_for_key(key)
+
+
+def _require_client(why: str = "OpenAI API") -> OpenAI:
+    """
+    For features that must have a client (chat), stop the app with a clear message.
+    """
+    client = _get_client()
+    if client is None:
+        st.error(
+            f"{why} is not configured.\n\n"
+            "Fix one of these:\n"
+            "1) Create `.streamlit/secrets.toml` in the folder you run `streamlit run` from, with:\n"
+            '   OPENAI_API_KEY="sk-..."\n'
+            "2) Or set environment variable OPENAI_API_KEY.\n"
+        )
+        st.stop()
+    return client
+
+
+# ---------------------------
+# Chat helpers
+# ---------------------------
 
 def init_model(default_model: str = "gpt-5-nano") -> None:
     if "openai_model" not in st.session_state:
@@ -36,7 +77,7 @@ def stream_chat_completion(messages: list[dict]):
     """
     Streaming Chat Completions.
     """
-    client = _get_client()
+    client = _require_client("Chat (OpenAI API)")
     return client.chat.completions.create(
         model=st.session_state["openai_model"],
         messages=messages,
@@ -45,7 +86,7 @@ def stream_chat_completion(messages: list[dict]):
 
 
 def create_chat_completion(messages: list[dict]):
-    client = _get_client()
+    client = _require_client("Chat (OpenAI API)")
     return client.chat.completions.create(
         model=st.session_state["openai_model"],
         messages=messages,
@@ -55,6 +96,7 @@ def create_chat_completion(messages: list[dict]):
 # ---------------------------
 # RAG: KB -> chunk -> embed -> retrieve_top_k
 # ---------------------------
+
 @dataclass
 class KBChunk:
     kb_file: str
@@ -111,16 +153,19 @@ def _chunk_text(text: str, max_chars: int = 900) -> List[str]:
     return chunks
 
 
-# ✅ Upgrade B: safer embedding call (won't hard-crash your demo)
 def embed_texts(texts: List[str]) -> List[List[float]]:
     """
     Embeddings API: pass a string or list of strings.
 
-    If embeddings fail (bad key, rate limit, model issue), we:
+    If embeddings fail (missing key, rate limit, model issue), we:
     - show a Streamlit error (visible in UI)
     - return [] so callers can safely bail out without crashing
     """
     client = _get_client()
+    if client is None:
+        st.warning("No OPENAI_API_KEY found — embeddings (RAG) are disabled.")
+        return []
+
     try:
         resp = client.embeddings.create(model=EMBED_MODEL, input=texts)
         return [d.embedding for d in resp.data]
@@ -145,7 +190,7 @@ def _build_kb_index_cached(
     """
     Build KB index (cached). fingerprint param forces recompute when files change.
 
-    Uses st.cache_data because we are caching "data" (a list of pickleable dataclasses). :contentReference[oaicite:3]{index=3}
+    Uses st.cache_data because we are caching "data" (a list of pickleable dataclasses).
     """
     md_files = sorted(glob.glob(os.path.join(kb_dir, "*.md")))
     if not md_files:
@@ -220,7 +265,6 @@ def retrieve_top_k(query: str, k: int = 3, kb_dir: str = "kb") -> List[KBChunk]:
     return [kb_index[i] for i in top_idx]
 
 
-# ✅ Upgrade A: return (chunk, similarity_score) for judge-friendly transparency
 def retrieve_top_k_with_scores(
     query: str,
     k: int = 3,
@@ -228,8 +272,6 @@ def retrieve_top_k_with_scores(
 ) -> List[Tuple[KBChunk, float]]:
     """
     Same as retrieve_top_k, but returns (KBChunk, similarity_score).
-
-    Score is cosine similarity in [-1, 1], usually ~0.2–0.9 for "related" text in practice.
     """
     kb_index = build_kb_index(kb_dir=kb_dir)
     if not kb_index:
