@@ -10,6 +10,15 @@ CURRENT_LOCATIONS = ["Nigeria", "India", "UK"]
 TARGET_COUNTRIES = ["UK", "Canada", "USA", "Australia"]
 GOALS = ["Study only", "Study → Work", "Work directly"]
 
+NAV_DEMO = "🏁 Demo mode"
+NAV_WIZ  = "🧙 Wizard → Roadmap"
+NAV_DOC  = "📄 Document explainer"
+NAV_COL  = "🤝 Collaborator helper"
+NAV_ALL  = "🧩 Show all tabs"
+
+NAV_OPTIONS = [NAV_DEMO, NAV_WIZ, NAV_DOC, NAV_COL, NAV_ALL]
+
+
 LOW_BUDGET_THRESHOLD = 15000  # rough, not legal or financial advice
 
 # Super rough annual cost placeholders (hackathon demo only, NOT advice)
@@ -24,7 +33,7 @@ EST_ANNUAL_COST_GBP = {
 # ---------- Page configuration ----------
 # Must be very early in the script. :contentReference[oaicite:8]{index=8}
 st.set_page_config(
-    page_title="OpenPath Mobility Copilot",
+    page_title="Open-Visa-Pathway Mobility Copilot",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -34,16 +43,16 @@ init_model(default_model="gpt-5-nano")  # Initialize model in session_state
 
 # ---------- UI helpers ----------
 def render_persona_card():
-    st.markdown("### 👤 Persona: Student → Work")
+    st.markdown("### 🧭 Journey: Study → Work pathway")
     st.markdown(
-        "- 🎓 **Goal:** Study, then convert to work route\n"
-        "- 🧾 **Key constraints:** proof of funds, course duration, visa conditions\n"
-        "- ⚠️ **Risks (high-level):** underfunding, wrong timeline assumptions, missing documents\n"
-        "- ✅ **Best demo story:** “I can decode a scary email + plan next steps + draft outreach.”"
+        "- 🎯 **Outcome:** Get a study plan that can transition into work\n"
+        "- 📌 **Key constraints:** funds, duration, visa conditions (varies)\n"
+        "- ⚠️ **Common risks:** underfunding, timeline mismatch, missing documents\n"
+        "- ✅ **What this app does:** explains docs, builds a roadmap, drafts outreach\n"
     )
     st.caption("Prototype only — not legal/immigration advice.")
 
-
+# ---------- Doc explainer helpers ----------
 def _strip_code_fences(s: str) -> str:
     s = (s or "").strip()
     if s.startswith("```"):
@@ -52,21 +61,21 @@ def _strip_code_fences(s: str) -> str:
             s = s.rsplit("```", 1)[0]
     return s.strip()
 
-
+# ---------- Doc explainer: parse and render ----------
 def _try_parse_json(s: str):
     try:
         return json.loads(_strip_code_fences(s)), None
     except Exception as e:
         return None, str(e)
 
-
+# ---------- Doc explainer: render parsed JSON ----------
 def _render_doc_json(payload: dict):
     summary = payload.get("summary_bullets", [])
     checklist = payload.get("checklist", [])
     unknowns = payload.get("unknowns", [])
     links = payload.get("links_to_verify", [])
     sources_used = payload.get("sources_used", [])
-
+# ---------- Render sections ----------
     if summary:
         st.markdown("**Plain-English summary**")
         for b in summary:
@@ -452,7 +461,7 @@ def build_roadmap(profile: dict) -> list[dict]:
 
     return rows
 
-NAV_OPTIONS = ["🏁 Demo mode", "🧙 Wizard → Roadmap", "📄 Doc explainer", "🤝 Collab helper", "🧩 Show all tabs"]
+NAV_OPTIONS = ["🏁 Demo mode", "🧙 Wizard → Roadmap", "📄 Document explainer", "🤝 Collaborator helper", "🧩 Show all tabs"]
 
 if "nav" not in st.session_state:
     st.session_state.nav = NAV_OPTIONS[0]
@@ -462,13 +471,13 @@ if "nav_request" in st.session_state:
     st.session_state.nav = st.session_state.pop("nav_request")
 
 # ---------- Sidebar navigation (your choice) ----------
-st.sidebar.title("🧭 OpenPath Navigation")
+st.sidebar.title("🧭 Open-Visa-Pathway Navigation")
 nav = st.sidebar.radio(
     "Go to",
     NAV_OPTIONS,
     key="nav",
 )
-with st.sidebar.expander("👤 Persona card"):
+with st.sidebar.expander("👤 Target user: International student"):
     render_persona_card()
 
 st.sidebar.markdown("---")
@@ -476,8 +485,22 @@ st.sidebar.caption("Hackathon prototype • not legal advice")
 
 
 # ---------- Main header ----------
-st.title("OpenPath – Mobility Copilot")
-st.write("Turn visa chaos into a clear roadmap. **Prototype – not legal or immigration advice.**")
+# ---------- NEW: Hero header card (banner + quick nav buttons) ----------
+with st.container(border=True):  # border=True forces a visible card :contentReference[oaicite:3]{index=3}
+    left, right = st.columns([3, 2])  # clean layout split :contentReference[oaicite:4]{index=4}
+
+    with left:
+        st.markdown("## 🌍 Open-Visa-Pathway")
+        st.caption("1. Main goal: Turn international students visa challenges into a clear roadmap. ")
+        st.caption("2. Supported user countries: Nigeria, India (more coming soon!)")
+        st.caption("3. Supported target countries: UK, Canada, USA, Australia (more coming soon!)")
+        st.caption("4. **Prototype – not legal or  immigration advice.**")
+
+    
+# (Optional) keep old title commented for reference:
+# st.title("Open-Visa-Pathway Mobility Copilot")
+# st.write("Turn visa challenges into a clear roadmap. **Prototype – not legal or immigration advice.**")
+# ---------- Main tabs (your choice) ----------
 
 
 # Keep tabs (so you’re not “removing” your existing structure). :contentReference[oaicite:9]{index=9}
@@ -486,19 +509,20 @@ tab_wizard, tab_doc, tab_collab = st.tabs(["Wizard → Roadmap", "Doc explainer"
 
 # ====================== DEMO MODE (Landing page) ======================
 if nav == "🏁 Demo mode":
-    st.markdown("## 🏁 Demo mode (Judge-friendly story)")
-    st.markdown(
+    with st.container(border=True):
+        st.markdown("## 🏁 Demo mode")
+        st.markdown(
         "### One sentence\n"
-        "**OpenPath** turns confusing visa + university requirements into a clear, action-focused plan.\n\n"
-        "### What you can demo in 60 seconds\n"
+        "**Open-Visa-Pathway** turns confusing visa + university requirements into a clear, action-focused plan.\n\n"
+        "### What I can demo in 60 seconds\n"
         "1) Build a corridor roadmap (Wizard)\n"
-        "2) Paste a scary email → get a checklist + UNKNOWNs (Doc explainer + RAG)\n"
+        "2) Paste an email → get a checklist + UNKNOWNs (Doc explainer + RAG)\n"
         "3) Draft a professional email + time slots (Collab helper)\n"
     )
 
     st.markdown("### Why it’s innovative for VisaVerse")
     st.markdown(
-        "- 🌍 Helps people move across borders with less confusion\n"
+        "- 🌍 Helps global students move across borders with less confusion\n"
         "- 🧠 Uses AI + retrieval (RAG) for transparency\n"
         "- 🤝 Supports collaboration (emails + time zones)\n"
     )
@@ -661,13 +685,14 @@ with tab_wizard:
 
 # ====================== DOC EXPLAINER TAB ======================
 with tab_doc:
-    if nav not in ["📄 Doc explainer", "🧩 Show all tabs"]:
+    if nav not in ["📄 Document explainer", "🧩 Show all tabs"]:
         st.info("Use the sidebar to open **Doc explainer**.")
     else:
-        st.subheader("Doc explainer – make confusing emails simple")
-        st.caption(
-            "Paste visa or university emails/requirements below. "
-            "OpenPath will rewrite them in plain English with a checklist. "
+        with st.container(border=True):
+            st.subheader("Doc explainer – make confusing emails simple")
+            st.caption(
+            "Paste your visa or university emails/requirements below here. "
+            "Open-Visa-Pathway will rewrite them in plain English with a checklist. "
             "This is guidance only, not legal or immigration advice."
         )
 
@@ -773,14 +798,14 @@ with tab_doc:
 
 # ====================== COLLAB HELPER TAB ======================
 with tab_collab:
-    if nav not in ["🤝 Collab helper", "🧩 Show all tabs"]:
+    if nav not in [NAV_COL, NAV_ALL]:
         st.info("Use the sidebar to open **Collab helper**.")
     else:
         st.subheader("Collab helper – emails & cross-time-zone planning")
         st.caption(
             "Describe who you want to contact (university, employer, agent), "
             "what you want (meeting, clarification, etc.), and any time zones. "
-            "OpenPath will draft a polite email/message and suggest a few time slots."
+            "Open-Visa-Pathway will draft a polite email/message and suggest a few time slots."
         )
 
         if "collab_messages" not in st.session_state:
