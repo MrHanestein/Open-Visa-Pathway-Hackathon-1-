@@ -7,7 +7,7 @@ about visas, timelines, and post-study options.
 
 ## 2. Solution
 
-OpenPath is an AI mobility copilot that turns this distressing process into a clear roadmap:
+Open-Visa-Pathway is an AI mobility copilot that turns this distressing process into a clear roadmap:
 - Wizard → personalized roadmap (phases, checklist, risks)
 - Doc explainer → plain-English summaries of visa emails/requirements
 - Collab helper → draft emails/messages and time windows for cross-border calls
@@ -20,7 +20,9 @@ OpenPath is an AI mobility copilot that turns this distressing process into a cl
 
 - Python + Streamlit for UI
 - OpenAI API (LLMs) for reasoning and generation
-- (Later) Chroma/FAISS for retrieval-augmented generation (RAG)
+
+
+- (Future implementation) Chroma/FAISS for retrieval-augmented generation (RAG) alongside scaling.
 
 ## 4. Project status
 
@@ -49,10 +51,10 @@ UI theme is configured in .streamlit/config.toml.
 
 
 ## Additional Information:
-## Why Streamlit?
+## Why my choice of Streamlit?
 
-OpenPath uses Streamlit because:
-- It lets us build web apps in pure Python, which is ideal for rapid hackathon prototyping.
+Open-Visa-Pathway uses Streamlit because:
+- It lets me build web apps in pure Python, which is ideal for rapid hackathon prototyping.
 - It has built-in widgets and layout primitives for multi-step forms and chat-like interfaces.
 - It deploys easily (Streamlit Community Cloud / Railway) so judges can try the app quickly.
 
