@@ -29,8 +29,8 @@ Open-Visa-Pathway is an AI mobility copilot that turns this distressing process 
 - [ ] Streamlit app skeleton
 - [ ] OpenAI integration
 - [ ] Basic roadmap flow
-- [ ] Doc explainer
-- [ ] Collab helper
+- [ ] Document explainer
+- [ ] Collaborator helper
 ## Setup (Local)
 ``` bash
 1) git clone https://github.com/MrHanestein/Open-Visa-Pathway-Hackathon-1-.git
