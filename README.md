@@ -13,6 +13,13 @@ Open-Visa-Pathway is an AI mobility copilot that turns this distressing process 
 - Doc explainer → plain-English summaries of visa emails/requirements
 - Collab helper → draft emails/messages and time windows for cross-border calls
 
+## Screenshots
+
+<img width="1632" height="889" alt="{CF248A20-E0A6-4430-A487-2DD09ED07360}" src="https://github.com/user-attachments/assets/69b508c4-d55a-47d4-add8-096f4b209387" />
+<img width="1569" height="894" alt="{028B51A6-BCC2-4D71-803D-B1D5D76C908F}" src="https://github.com/user-attachments/assets/c3bd99f9-870f-40b8-b6e2-07840a7476f5" />
+<img width="1570" height="908" alt="{BF804C95-ABE2-43EB-A4C0-43946D8615B3}" src="https://github.com/user-attachments/assets/b55851c1-0851-400e-8e82-32d5ba794c02" />
+
+
 **Primary corridors (v1):**
 - Nigeria → UK (Student → Graduate Route → Skilled Worker)
 - India → UK (Student → Graduate Route → Skilled Worker)
